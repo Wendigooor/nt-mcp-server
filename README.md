@@ -1,98 +1,121 @@
-# NT8 MCP Bridge — Hermes → NinjaTrader 8
+# nt-mcp-server — MCP server for NinjaTrader 8
 
-Связка MCP-сервера и NT8 AddOn для управления NinjaTrader 8 через Hermes/Claude.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Архитектура
+Connect AI agents (Claude, Hermes, ChatGPT, Cursor, Cline) to **NinjaTrader 8** via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
+
+Your AI can read positions, check balances, place and cancel orders, fetch real-time quotes, pull historical bars, search instruments, and run NinjaScript strategies — through a single stdio interface.
+
+## Architecture
 
 ```
-Hermes (я)
-    ↓ MCP stdio (JSON-RPC)
-nt-mcp-server.js (Node.js, zero deps)
-    ↓ HTTP localhost:7890
-McpBridgeAddOn.dll (C# NinjaScript, живёт внутри NT8)
-    ↓
-NT8: Account / Positions / Orders / MarketData / Bars / Strategy Analyzer
+AI Client (MCP stdio)  →  nt-mcp-server.js  →  HTTP :7890  →  NT8 McpBridgeAddOn
 ```
 
-## Установка
+Three layers, zero external APIs, everything runs locally on your machine.
 
-### 1. NinjaTrader 8 AddOn
+## Quick Start
 
-1. Открой **NinjaTrader 8**
-2. `New → NinjaScript Editor` (F11)
-3. В панели слева: правой кнопкой по `AddOns` → `New AddOn...`
-4. Замени содержимое файла на `nt8-addon/McpBridgeAddOn.cs`
-5. Нажми **F5** (Compile)
-6. Перезапусти NT8
+### 1. Install the NT8 AddOn
 
-Или просто скопируй `McpBridgeAddOn.cs` в:
+1. Open **NinjaTrader 8**
+2. `New` → `NinjaScript Editor` (F11)
+3. Right-click `AddOns` in the left panel → `New AddOn...`
+4. Replace the file contents with `nt8-addon/McpBridgeAddOn.cs`
+5. Press **F5** to compile
+6. Restart NinjaTrader
+
+Alternatively, copy `nt8-addon/McpBridgeAddOn.cs` to:
 ```
 Documents\NinjaTrader 8\bin\Custom\AddOns\
 ```
-И скомпилируй через NinjaScript Editor (F5).
+and compile via NinjaScript Editor (F5).
 
-После запуска NT8 — AddOn стартует автоматически на порту **7890**.
-
-Проверка:
+Verify the AddOn is running:
 ```powershell
 curl http://localhost:7890/api/health
-# → {"status":"ok","timestamp":"...","version":"0.1.0"}
+# {"status":"ok","timestamp":"...","version":"0.1.0"}
 ```
 
-### 2. MCP-сервер (Node.js)
+### 2. Start the MCP Server
 
-```powershell
-cd trading-scalping/nt-mcp
+```bash
 node nt-mcp-server.js
 ```
 
-Должен написать в консоль:
+Expected output:
 ```
 [nt-mcp] Server started — NT8 at http://127.0.0.1:7890
 [nt-mcp] Waiting for MCP messages on stdin...
 ```
 
-### 3. Hermes Config
+### 3. Configure Your AI Client
 
-Добавить в `~/.hermes/config.yaml`:
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ninjatrader": {
+      "command": "node",
+      "args": ["C:/path/to/nt-mcp-server.js"]
+    }
+  }
+}
+```
 
+**Hermes Agent** (`~/.hermes/config.yaml`):
 ```yaml
 mcpServers:
   ninjatrader:
     command: node
-    args:
-      - C:\Users\YOUR_USER\Documents\projects\trading-scalping\nt-mcp\nt-mcp-server.js
+    args: ['C:\path\to\nt-mcp-server.js']
     transport: stdio
 ```
 
-После этого я смогу вызывать инструменты `nt_health`, `nt_orders`, `nt_positions` и т.д.
+## Tools (Phase 1)
 
-## Инструменты (Phase 1)
+| Tool | Description |
+|------|-------------|
+| `nt_health` | Check connection to NinjaTrader 8 |
+| `nt_accounts` | List accounts, balances, buying power |
+| `nt_positions` | List open positions with PnL |
+| `nt_orders` | List working orders with status |
+| `nt_place_order` | Place Market / Limit / StopMarket / StopLimit orders |
+| `nt_cancel_order` | Cancel an order by ID or name |
+| `nt_cancel_all_orders` | Cancel all working orders across all accounts |
+| `nt_quote` | Real-time quote (bid, ask, last, volume, daily high/low) |
+| `nt_bars` | Historical OHLCV bars (Minute, Day, Tick, Volume, Range) |
+| `nt_search` | Search instruments by name or symbol |
+| `nt_execute_strategy` | Launch a NinjaScript strategy on a chart |
 
-| Инструмент | Описание |
-|-----------|----------|
-| `nt_health` | Проверка соединения с NT8 |
-| `nt_accounts` | Список счетов и балансов |
-| `nt_positions` | Открытые позиции |
-| `nt_orders` | Работающие ордеры |
-| `nt_place_order` | Разместить ордер (Market/Limit/Stop) |
-| `nt_cancel_order` | Отменить ордер по ID |
-| `nt_cancel_all_orders` | Отменить все ордеры |
-| `nt_quote` | Текущая котировка (bid/ask/last/volume) |
-| `nt_bars` | Исторические бары OHLCV |
-| `nt_search` | Поиск инструментов |
-| `nt_execute_strategy` | Запуск стратегии (Phase 2) |
+## Configuration
 
-## Phase 2 (план)
+Environment variables:
 
-- `nt_backtest` — запуск Strategy Analyzer, получение результатов
-- `nt_strategy_performance` — метрики (PF, Sharpe, DD)
-- `nt_chart_state` — состояние открытых чартов
-- `nt_indicator_values` — значения индикаторов на чарте
-- `nt_compile` — компиляция NinjaScript в памяти
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NT8_HOST` | `127.0.0.1` | NT8 AddOn hostname |
+| `NT8_PORT` | `7890` | NT8 AddOn HTTP port |
+
+## Roadmap (Phase 2)
+
+- `nt_backtest` — run Strategy Analyzer, return full trade list + performance metrics
+- `nt_compile` — compile NinjaScript source in memory (incremental, no disk write)
+- `nt_chart_state` — read chart state (symbol, timeframe, indicators)
+- `nt_indicator_values` — pull live indicator values from open charts
+- `nt_deploy_strategy` — deploy, verify, and monitor a strategy in production
+- Full backtest → optimize → deploy → monitor pipeline
 
 ## Requirements
 
-- Node.js 18+
-- NinjaTrader 8 (Lifetime или Trial)
-- Windows (NT8 только Windows)
+- **Node.js 18+** (uses only built-in modules — zero npm dependencies)
+- **NinjaTrader 8** (any license: free, trial, or lifetime)
+- **Windows** (NinjaTrader only runs on Windows)
+
+## License
+
+MIT — do what you want, no strings attached. See [LICENSE](LICENSE).
+
+## Author
+
+Built by [Igor](https://github.com/Wendigooor) and his AI agent Hermes.
